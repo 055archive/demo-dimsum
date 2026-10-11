@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo E-Menu Dimsum - Sistem Alamat ala GoFood & Pemesanan</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- LEAFLET.JS (PETA OPEN-SOURCE GRATIS) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .leaflet-container {
+      font-family: inherit;
+      z-index: 10;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #e2e8f0;
+      border-radius: 9999px;
+    }
+    /* Animasi denyut pin GPS */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.8); opacity: 0.8; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    .pin-pulse {
+      animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col items-center">
+
+  <!-- TOP BAR: MODE SWITCHER -->
+  <header class="w-full bg-slate-900 text-white px-4 py-3 sticky top-0 z-50 shadow-md">
+    <div class="max-w-4xl mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="text-xl">🥟</span>
+        <span class="font-bold text-sm md:text-base tracking-tight">Dimsum Delight — GoFood Map Prototype</span>
+      </div>
+      <div class="flex items-center bg-slate-800 p-1 rounded-xl text-xs font-semibold border border-slate-700">
+        <button id="nav-btn-customer" onclick="switchView('customer')" class="px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 shadow transition flex items-center gap-1.5">
+          <i class="fa-solid fa-mobile-screen"></i>
+          <span>Tampilan Pembeli</span>
+        </button>
+        <button id="nav-btn-kitchen" onclick="switchView('kitchen')" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition flex items-center gap-1.5">
+          <i class="fa-solid fa-store"></i>
+          <span>Layar Kasir / Outlet</span>
+          <span id="kitchen-badge" class="hidden bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="w-full max-w-md md:max-w-xl mx-auto flex-1 p-3 md:p-4 pb-28">
+
+    <!-- ========================================== -->
+    <!-- VIEW 1: CUSTOMER VIEW (MOBILE FIRST UI)    -->
+    <!-- ========================================== -->
+    <div id="customer-view" class="space-y-4">
+
+      <!-- OUTLET SELECTOR CARD -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fa-solid fa-location-dot"></i> Pilih Cabang Outlet Asal
+          </span>
+          <span class="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Take Away Only</span>
+        </div>
+        <select id="outlet-select" onchange="onOutletChange()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500">
+          <option value="serang-pusat" data-lat="-6.1158" data-lng="106.1542">📍 Cabang 1: Serang Pusat (Alun-Alun / Jl. Ahmad Yani)</option>
+          <option value="serang-timur" data-lat="-6.1245" data-lng="106.1820">📍 Cabang 2: Serang Timur (Jl. Raya Jakarta - Pakupatan)</option>
+          <option value="cilegon" data-lat="-6.0175" data-lng="106.0535">📍 Cabang 3: Cilegon Kota (Simpang Tiga)</option>
+        </select>
+        <p class="text-[11px] text-slate-500 mt-2 flex items-center gap-1">
+          <i class="fa-regular fa-clock text-slate-400"></i> Jam operasional: 10.00 - 22.00 WIB
+        </p>
+      </div>
+
+      <!-- METHOD PICKER: DELIVERY VS PICKUP -->
+      <div class="bg-white rounded-2xl p-2.5 shadow-sm border border-slate-200 flex gap-2">
+        <button id="btn-method-delivery" onclick="setMethod('delivery')" class="flex-1 py-2.5 px-3 rounded-xl border-2 border-amber-500 bg-amber-50/60 text-amber-900 font-bold text-xs flex flex-col items-center justify-center gap-1 transition">
+          <i class="fa-solid fa-motorcycle text-base text-amber-600"></i>
+          <span>Diantar Ojol / Kurir</span>
+        </button>
+        <button id="btn-method-pickup" onclick="setMethod('pickup')" class="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 font-semibold text-xs flex flex-col items-center justify-center gap-1 transition hover:bg-slate-100">
+          <i class="fa-solid fa-bag-shopping text-base text-slate-400"></i>
+          <span>Ambil di Outlet (Self-Pickup)</span>
+        </button>
+      </div>
+
+      <!-- GOFOOD-STYLE ADDRESS CARD (DELIVERY ONLY) -->
+      <div id="delivery-config-box" class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fa-solid fa-map-location-dot text-rose-500"></i> Alamat Pengantaran (Titik Peta)
+          </h4>
+          <span class="text-[10px] bg-rose-50 text-rose-600 font-bold px-2 py-0.5 rounded-full">Sistem GoFood</span>
+        </div>
+
+        <!-- SELECTED ADDRESS DISPLAY -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
+          <div class="flex items-start gap-2.5">
+            <div class="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center text-xs shrink-0 mt-0.5">
+              <i class="fa-solid fa-location-dot"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div id="display-address-title" class="font-bold text-xs text-slate-900 truncate">Perumahan Puri Anggrek Serang</div>
+              <div id="display-address-detail" class="text-[11px] text-slate-500 line-clamp-2 mt-0.5">Kel. Kalodran, Kec. Walantaka, Kota Serang</div>
+            </div>
+          </div>
+
+          <!-- KOLOM INPUT LANGSUNG CATATAN / PATOKAN LOKASI -->
+          <div class="pt-2 border-t border-slate-200/80">
+            <label class="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+              <span class="flex items-center gap-1.5">
+                <i class="fa-regular fa-pen-to-square text-amber-600"></i>
+                <span>Catatan / Patokan Lokasi:</span>
+              </span>
+              <span class="text-[10px] text-slate-400 font-normal">Tulis detail kurir</span>
+            </label>
+            <input type="text" id="direct-address-note" oninput="onDirectNoteChange(this.value)" placeholder="Contoh: Blok C2 No. 12, Pagar abu-abu, samping warung..." value="Blok C2 No. 12, Pagar abu-abu samping warung" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition">
+          </div>
+
+          <!-- BUTTON TO OPEN GOFOOD MAP MODAL -->
+          <button onclick="openMapModal()" class="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition active:scale-[0.98]">
+            <i class="fa-solid fa-map-pin text-rose-500"></i>
+            <span>Ubah Lokasi di Peta & Pinpoint</span>
+            <i class="fa-solid fa-chevron-right text-[10px] text-slate-400"></i>
+          </button>
+        </div>
+
+        <!-- SHIPPING CALCULATION RESULT -->
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+          <div>
+            <div class="text-[11px] text-amber-900 font-bold flex items-center gap-1.5">
+              <i class="fa-solid fa-route text-amber-600"></i>
+              <span>Jarak Antar: <span id="display-distance-km" class="text-slate-900">3.4 KM</span></span>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-0.5">Tarif: Rp 9.000 dasar + Rp 2.000/km</div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] text-slate-400 font-medium">Ongkir Kurir:</div>
+            <div id="display-shipping-fee" class="text-sm font-extrabold text-amber-700">Rp 15.800</div>
+          </div>
+        </div>
+
+        <!-- MAX DISTANCE WARNING (HIDDEN BY DEFAULT) -->
+        <div id="distance-warning" class="hidden bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-xs flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation text-rose-500 text-sm shrink-0"></i>
+          <span>Jarak terlalu jauh (&gt; 12 KM dari outlet ini). Silakan ganti outlet cabang terdekat atau gunakan opsi Ambil Sendiri.</span>
+        </div>
+      </div>
+
+      <!-- PICKUP SCHEDULE CONFIG BOX (HIDDEN BY DEFAULT) -->
+      <div id="pickup-config-box" class="hidden bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
+        <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+          <i class="fa-regular fa-calendar-check text-amber-600"></i> Jadwal Ambil di Outlet
+        </h4>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-[11px] text-slate-500 font-medium block mb-1">Tanggal Ambil</label>
+            <input type="date" id="pickup-date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-semibold">
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-500 font-medium block mb-1">Jam Ambil</label>
+            <input type="time" id="pickup-time" value="14:30" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-semibold">
+          </div>
+        </div>
+      </div>
+
+      <!-- MENU CATALOG -->
+      <div class="flex items-center justify-between pt-2">
+        <h3 class="font-extrabold text-base text-slate-900 flex items-center gap-2">
+          <span>Daftar Menu Dimsum</span>
+          <span class="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">Favorit</span>
+        </h3>
+        <span class="text-xs text-slate-400">Pilih menu</span>
+      </div>
+
+      <div id="menu-container" class="space-y-3">
+        <!-- Rendered via JS -->
+      </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- VIEW 2: KITCHEN / CASHIER DASHBOARD        -->
+    <!-- ========================================== -->
+    <div id="kitchen-view" class="hidden space-y-4">
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-slate-900 text-sm md:text-base flex items-center gap-2">
+            <i class="fa-solid fa-bell text-amber-500"></i> Antrian Pesanan Kasir & Dapur
+          </h3>
+          <p class="text-xs text-slate-500">Layar penerima pesanan di outlet</p>
+        </div>
+        <button onclick="clearOrders()" class="text-xs text-rose-600 hover:underline">Reset Antrian</button>
+      </div>
+
+      <div id="kitchen-orders-list" class="space-y-3">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FIXED BOTTOM CART BAR -->
+  <div id="cart-bar" class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 shadow-2xl z-40">
+    <div class="max-w-md md:max-w-xl mx-auto flex items-center justify-between gap-3">
+      <div>
+        <div class="text-[11px] text-slate-400 font-medium">Total (Makanan + Ongkir):</div>
+        <div id="bar-total-price" class="text-lg font-extrabold text-slate-900">Rp 0</div>
+      </div>
+      <button id="btn-checkout" onclick="openCheckoutModal()" disabled class="bg-slate-200 text-slate-400 font-bold px-6 py-3 rounded-xl text-sm flex items-center gap-2 cursor-not-allowed transition">
+        <span>Lanjut Bayar QRIS</span>
+        <i class="fa-solid fa-arrow-right text-xs"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================= -->
+  <!-- MODAL PETA ALA GOFOOD (LEAFLET + NOMINATIM + PIN GESER)  -->
+  <!-- ======================================================= -->
+  <div id="map-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-3 hidden">
+    <div class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl p-4 shadow-2xl max-h-[95vh] flex flex-col space-y-3">
+      
+      <!-- HEADER -->
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div>
+          <h3 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+            <i class="fa-solid fa-location-crosshairs text-rose-500"></i> Tentukan Titik Antar (ala GoFood)
+          </h3>
+          <p class="text-[11px] text-slate-400">Pilih titik tepat di depan gerbang / pintu rumah</p>
+        </div>
+        <button onclick="closeMapModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- AUTOCOMPLETE SEARCH INPUT -->
+      <div class="relative">
+        <div class="flex items-center bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-rose-500 focus-within:bg-white transition">
+          <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs mr-2"></i>
+          <input type="text" id="map-search-input" oninput="handleAddressSearch(this.value)" placeholder="Cari nama jalan, perumahan, kelurahan..." class="w-full bg-transparent text-xs font-semibold text-slate-800 focus:outline-none">
+          <button id="search-clear-btn" onclick="clearSearch()" class="hidden text-slate-400 hover:text-slate-600 text-xs ml-1">
+            <i class="fa-solid fa-circle-xmark"></i>
+          </button>
+        </div>
+
+        <!-- SEARCH RESULTS DROPDOWN -->
+        <div id="search-results-dropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- PETA INTERAKTIF CONTAINER -->
+      <div class="relative w-full h-64 sm:h-72 rounded-2xl overflow-hidden border border-slate-200 shadow-inner">
+        <div id="leaflet-map" class="w-full h-full"></div>
+        
+        <!-- GPS MY LOCATION BUTTON (FLOATING ON MAP) -->
+        <button onclick="getCurrentGPSLocation()" class="absolute bottom-3 right-3 z-20 bg-white hover:bg-slate-50 text-slate-700 font-bold p-2.5 rounded-xl shadow-lg border border-slate-200 flex items-center gap-1.5 text-xs active:scale-95 transition">
+          <i class="fa-solid fa-crosshairs text-rose-500 text-sm"></i>
+          <span class="hidden sm:inline">Lokasi Saya (GPS)</span>
+        </button>
+
+        <!-- INSTRUCTION BADGE -->
+        <div class="absolute top-3 left-3 z-20 bg-slate-900/80 backdrop-blur-sm text-white text-[10px] px-2.5 py-1 rounded-full font-medium shadow pointer-events-none flex items-center gap-1">
+          <i class="fa-solid fa-hand-pointer text-amber-400"></i>
+          <span>Geser pin merah untuk mencocokkan titik</span>
+        </div>
+      </div>
+
+      <!-- ADDRESS SUMMARY & NOTES FORM -->
+      <div class="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+        <div>
+          <label class="text-[10px] font-bold text-slate-500 uppercase">Titik Alamat Terpilih:</label>
+          <div id="modal-detected-address" class="font-bold text-slate-800 text-xs mt-0.5 leading-snug">
+            Mendeteksi lokasi...
+          </div>
+        </div>
+
+        <div>
+          <label class="text-[10px] font-bold text-slate-500 uppercase">Detail Rumah / Patokan Kurir (Wajib):</label>
+          <input type="text" id="modal-address-note" placeholder="Contoh: No. 12B, Pagar hitam samping warung Bu Joko" value="Blok C2 No. 12, Pagar abu-abu samping warung" class="w-full mt-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500">
+        </div>
+
+        <div class="flex items-center justify-between pt-1 border-t border-slate-200 text-[11px]">
+          <span class="text-slate-600">Jarak dari Outlet: <strong id="modal-distance-text" class="text-slate-900">3.4 KM</strong></span>
+          <span class="text-amber-700 font-extrabold">Ongkir: <span id="modal-fee-text">Rp 15.800</span></span>
+        </div>
+      </div>
+
+      <!-- SUBMIT BUTTON -->
+      <button onclick="confirmSelectedAddress()" id="modal-btn-confirm" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-rose-600/20 transition active:scale-[0.98]">
+        <i class="fa-solid fa-check"></i>
+        <span>Gunakan Titik Alamat Ini</span>
+      </button>
+
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL: CHECKOUT & QRIS SIMULATION          -->
+  <!-- ========================================== -->
+  <div id="checkout-modal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 shadow-2xl max-h-[92vh] overflow-y-auto custom-scrollbar space-y-4">
+      
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="font-bold text-slate-900 text-base">Konfirmasi Pembayaran QRIS</h3>
+          <p class="text-[11px] text-slate-500">Cek kembali pesanan & alamat Anda</p>
+        </div>
+        <button onclick="closeCheckoutModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- CONTACT / DATA PEMESAN (WAJIB DIISI) -->
+      <div class="space-y-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+        <div class="flex items-center justify-between">
+          <label class="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
+            <i class="fa-solid fa-user-pen text-amber-600"></i>
+            <span>Data Pemesan:</span>
+          </label>
+          <span class="text-[10px] bg-rose-50 text-rose-600 font-bold px-2 py-0.5 rounded-full border border-rose-200">Wajib Diisi</span>
+        </div>
+        
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-700 mb-1">Nama Lengkap Pembeli:</label>
+          <div class="relative">
+            <i class="fa-solid fa-user absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" id="cust-name" placeholder="Ketik nama pemesan (contoh: Rena Yulia)" class="w-full bg-white border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition">
+          </div>
+          <span id="cust-name-error" class="hidden text-[10px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+            <i class="fa-solid fa-circle-exclamation"></i> Nama pemesan wajib diisi!
+          </span>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-700 mb-1">Nomor WhatsApp Aktif:</label>
+          <div class="relative">
+            <i class="fa-brands fa-whatsapp absolute left-3 top-2.5 text-emerald-500 text-xs"></i>
+            <input type="tel" id="cust-phone" placeholder="Ketik nomor WA aktif (contoh: 081211633380)" class="w-full bg-white border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition">
+          </div>
+          <span id="cust-phone-error" class="hidden text-[10px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+            <i class="fa-solid fa-circle-exclamation"></i> Nomor WhatsApp aktif wajib diisi (minimal 9 digit angka)!
+          </span>
+        </div>
+      </div>
+
+      <!-- SUMMARY -->
+      <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2 text-xs">
+        <div class="font-bold text-slate-700 text-[11px] uppercase tracking-wider">Rincian Tagihan:</div>
+        <div id="modal-items-summary" class="space-y-1 text-slate-600"></div>
+        <div class="border-t border-slate-200 pt-2 flex justify-between font-bold text-slate-900 text-sm">
+          <span>Total Bayar:</span>
+          <span id="modal-total-payment" class="text-amber-600">Rp 0</span>
+        </div>
+      </div>
+
+      <!-- QRIS BOX -->
+      <div class="bg-gradient-to-b from-slate-50 to-white rounded-2xl p-4 border border-slate-200 text-center space-y-3">
+        <div class="flex items-center justify-center gap-2">
+          <img src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Logo_QRIS.svg" alt="QRIS" class="h-6 object-contain">
+          <span class="text-[11px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full">QRIS Dinamis (Midtrans)</span>
+        </div>
+        
+        <div class="bg-white p-3 rounded-xl border border-slate-200 inline-block shadow-inner">
+          <svg class="w-36 h-36 mx-auto text-slate-800" viewBox="0 0 100 100" fill="currentColor">
+            <path d="M0,0 h30 v30 h-30 z M10,10 h10 v10 h-10 z M70,0 h30 v30 h-30 z M80,10 h10 v10 h-10 z M0,70 h30 v30 h-30 z M10,80 h10 v10 h-10 z M40,10 h20 v10 h-20 z M40,40 h20 v20 h-20 z M70,40 h10 v10 h-10 z M10,40 h10 v20 h-10 z M70,70 h10 v20 h-10 z M85,60 h15 v10 h-15 z M50,70 h10 v10 h-10 z M40,85 h20 v15 h-20 z M85,85 h15 v15 h-15 z"/>
+          </svg>
+        </div>
+
+        <p class="text-[11px] text-slate-500">Nominal sudah pas. Cukup scan pakai m-Banking atau GoPay/OVO/Dana.</p>
+        
+        <button onclick="simulateSuccessfulPayment()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition">
+          <i class="fa-solid fa-circle-check"></i>
+          <span>Simulasikan: Pembeli Sudah Bayar Lunas</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL: ORDER SUCCESS & WHATSAPP REDIRECT   -->
+  <!-- ========================================== -->
+  <div id="success-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl text-center space-y-4">
+      
+      <div class="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl animate-bounce">
+        <i class="fa-solid fa-check"></i>
+      </div>
+
+      <div>
+        <h3 class="font-extrabold text-slate-900 text-lg">Pesanan Lunas & Diterima!</h3>
+        <p class="text-xs text-slate-500 mt-1">ID Pesanan: <span id="success-order-id" class="font-mono font-bold text-slate-800">#DS-9921</span></p>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-left space-y-1 text-xs text-amber-900">
+        <div class="font-bold flex items-center gap-1.5">
+          <i class="fa-solid fa-circle-info text-amber-600"></i> Notifikasi WhatsApp Otomatis:
+        </div>
+        <p class="text-[11px] text-amber-800 leading-relaxed">
+          Tautan Google Maps lokasi rumah Anda sudah disertakan di pesan WA sehingga kurir tidak akan salah alamat.
+        </p>
+      </div>
+
+      <!-- WHATSAPP DIRECT ACTION BUTTON (WA.ME 100% FREE) -->
+      <a id="btn-wa-send" href="#" target="_blank" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition">
+        <i class="fa-brands fa-whatsapp text-lg"></i>
+        <span>Kirim Tiket Pesanan + Peta ke WhatsApp Kasir</span>
+      </a>
+
+      <button onclick="closeSuccessModalAndSwitchToKitchen()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-xs transition">
+        Buka Layar Kasir Outlet &rarr;
+      </button>
+
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    // 1. DATA OUTLET & MENU
+    const OUTLETS = {
+      'serang-pusat': { name: "Cabang 1: Serang Pusat", lat: -6.1158, lng: 106.1542, address: "Alun-Alun Serang / Jl. Ahmad Yani" },
+      'serang-timur': { name: "Cabang 2: Serang Timur", lat: -6.1245, lng: 106.1820, address: "Jl. Raya Jakarta, Pakupatan" },
+      'cilegon': { name: "Cabang 3: Cilegon Kota", lat: -6.0175, lng: 106.0535, address: "Simpang Tiga Cilegon" }
+    };
+
+    const MENUS = [
+      { id: 1, name: "Dimsum Mentai Bakar", desc: "4 pcs dimsum ayam dengan saus mentai gurih dibakar torch", price: 25000, img: "🥟🔥" },
+      { id: 2, name: "Dimsum Mozzarella Melt", desc: "4 pcs dimsum dengan lelehan keju mozzarella premium", price: 24000, img: "🧀🥟" },
+      { id: 3, name: "Dimsum Ayam Original", desc: "4 pcs olahan daging ayam segar kenyal dengan chili oil khas", price: 18000, img: "🥟✨" },
+      { id: 4, name: "Hakau Udang Kristal", desc: "Kulit transparan lembut dengan isian udang utuh gurih", price: 23000, img: "🦐🥟" },
+      { id: 5, name: "Dimsum Nori Rumput Laut", desc: "Dimsum ayam dibalut lembaran nori renyah gurih", price: 20000, img: "🍙🥟" },
+      { id: 6, name: "Extra Chili Oil Botol Mini", desc: "Minyak cabai aromatik pedas gurih pelengkap sempurna", price: 5000, img: "🌶️" }
+    ];
+
+    // STATE
+    let cart = {};
+    let fulfillmentMethod = 'delivery';
+    let currentOutletKey = 'serang-pusat';
+    
+    // CUSTOMER DELIVERY LOCATION STATE (DEFAULT: PURI ANGGREK SERANG)
+    let customerLocation = {
+      lat: -6.1350,
+      lng: 106.1780,
+      title: "Perumahan Puri Anggrek Serang",
+      detail: "Kel. Kalodran, Kec. Walantaka, Kota Serang",
+      note: "Blok C2 No. 12, Pagar abu-abu samping warung"
+    };
+
+    let calculatedDistanceKm = 3.4;
+    let shippingFee = 15800;
+    let ordersList = [];
+
+    // LEAFLET MAP OBJECTS
+    let map = null;
+    let customerMarker = null;
+    let outletMarker = null;
+    let routeLine = null;
+    let searchTimeout = null;
+
+    // INIT
+    document.addEventListener('DOMContentLoaded', () => {
+      renderMenu();
+      updateDeliveryCalculation();
+      
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('pickup-date').value = today;
+    });
+
+    // RENDER MENU
+    function renderMenu() {
+      const container = document.getElementById('menu-container');
+      container.innerHTML = MENUS.map(item => {
+        const qty = cart[item.id] || 0;
+        return `
+          <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-14 h-14 bg-amber-50 border border-amber-100 rounded-xl flex items-center justify-center text-2xl select-none">
+                ${item.img}
+              </div>
+              <div>
+                <h4 class="font-bold text-slate-800 text-sm">${item.name}</h4>
+                <p class="text-[11px] text-slate-400 line-clamp-1 max-w-[200px]">${item.desc}</p>
+                <div class="text-xs font-extrabold text-amber-600 mt-1">Rp ${item.price.toLocaleString('id-ID')}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 p-1 rounded-xl">
+              <button onclick="updateQty(${item.id}, -1)" class="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold flex items-center justify-center hover:bg-slate-100 active:scale-95 text-xs">-</button>
+              <span class="w-5 text-center font-bold text-xs text-slate-800">${qty}</span>
+              <button onclick="updateQty(${item.id}, 1)" class="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 font-bold flex items-center justify-center hover:bg-amber-600 active:scale-95 text-xs">+</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      updateCartBar();
+    }
+
+    function updateQty(id, delta) {
+      const current = cart[id] || 0;
+      const next = current + delta;
+      if (next <= 0) {
+        delete cart[id];
+      } else {
+        cart[id] = next;
+      }
+      renderMenu();
+    }
+
+    // HAVERSINE DISTANCE CALCULATION (KM)
+    function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // radius bumi dalam KM
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      // Diberikan faktor jalanan riil (x1.25) karena jalan berbelok-belok
+      return (R * c * 1.25);
+    }
+
+    // UPDATE ONGKIR & JARAK
+    function updateDeliveryCalculation() {
+      const outlet = OUTLETS[currentOutletKey];
+      const dist = calculateHaversineDistance(outlet.lat, outlet.lng, customerLocation.lat, customerLocation.lng);
+      calculatedDistanceKm = parseFloat(dist.toFixed(1));
+
+      // Rumus tarif: Dasar Rp 9.000 + Rp 2.000/km (dibulatkan ke ratusan terdekat)
+      shippingFee = Math.round((9000 + (calculatedDistanceKm * 2000)) / 100) * 100;
+
+      // Update UI Display
+      document.getElementById('display-address-title').innerText = customerLocation.title;
+      document.getElementById('display-address-detail').innerText = customerLocation.detail;
+      const directNoteInput = document.getElementById('direct-address-note');
+      if (directNoteInput && directNoteInput.value !== customerLocation.note) {
+        directNoteInput.value = customerLocation.note;
+      }
+      document.getElementById('display-distance-km').innerText = `${calculatedDistanceKm} KM`;
+      document.getElementById('display-shipping-fee').innerText = `Rp ${shippingFee.toLocaleString('id-ID')}`;
+
+      // Jarak maksimal validation (12 KM)
+      const warningBox = document.getElementById('distance-warning');
+      const checkoutBtn = document.getElementById('btn-checkout');
+      if (calculatedDistanceKm > 12) {
+        warningBox.classList.remove('hidden');
+      } else {
+        warningBox.classList.add('hidden');
+      }
+
+      updateCartBar();
+    }
+
+    function onDirectNoteChange(val) {
+      customerLocation.note = val;
+      const modalNote = document.getElementById('modal-address-note');
+      if (modalNote) modalNote.value = val;
+    }
+
+    function onOutletChange() {
+      currentOutletKey = document.getElementById('outlet-select').value;
+      updateDeliveryCalculation();
+      if (map) {
+        updateMapMarkers();
+      }
+    }
+
+    function setMethod(method) {
+      fulfillmentMethod = method;
+      const btnDelivery = document.getElementById('btn-method-delivery');
+      const btnPickup = document.getElementById('btn-method-pickup');
+      const boxDelivery = document.getElementById('delivery-config-box');
+      const boxPickup = document.getElementById('pickup-config-box');
+
+      if (method === 'delivery') {
+        btnDelivery.className = "flex-1 py-2.5 px-3 rounded-xl border-2 border-amber-500 bg-amber-50/60 text-amber-900 font-bold text-xs flex flex-col items-center justify-center gap-1 transition";
+        btnPickup.className = "flex-1 py-2.5 px-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 font-semibold text-xs flex flex-col items-center justify-center gap-1 transition hover:bg-slate-100";
+        boxDelivery.classList.remove('hidden');
+        boxPickup.classList.add('hidden');
+      } else {
+        btnPickup.className = "flex-1 py-2.5 px-3 rounded-xl border-2 border-amber-500 bg-amber-50/60 text-amber-900 font-bold text-xs flex flex-col items-center justify-center gap-1 transition";
+        btnDelivery.className = "flex-1 py-2.5 px-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 font-semibold text-xs flex flex-col items-center justify-center gap-1 transition hover:bg-slate-100";
+        boxDelivery.classList.add('hidden');
+        boxPickup.classList.remove('hidden');
+      }
+      updateCartBar();
+    }
+
+    function getTotals() {
+      let subtotal = 0;
+      let totalItems = 0;
+      for (const [id, qty] of Object.entries(cart)) {
+        const item = MENUS.find(m => m.id === parseInt(id));
+        if (item) {
+          subtotal += item.price * qty;
+          totalItems += qty;
+        }
+      }
+      const activeShipping = (fulfillmentMethod === 'delivery' && totalItems > 0) ? shippingFee : 0;
+      const grandTotal = subtotal + activeShipping;
+      return { subtotal, activeShipping, grandTotal, totalItems };
+    }
+
+    function updateCartBar() {
+      const { subtotal, activeShipping, grandTotal, totalItems } = getTotals();
+      const barTotal = document.getElementById('bar-total-price');
+      const btnCheckout = document.getElementById('btn-checkout');
+
+      barTotal.innerText = `Rp ${grandTotal.toLocaleString('id-ID')}`;
+
+      if (totalItems > 0 && (fulfillmentMethod !== 'delivery' || calculatedDistanceKm <= 12)) {
+        btnCheckout.disabled = false;
+        btnCheckout.className = "bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-6 py-3 rounded-xl text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 active:scale-95 transition";
+      } else {
+        btnCheckout.disabled = true;
+        btnCheckout.className = "bg-slate-200 text-slate-400 font-bold px-6 py-3 rounded-xl text-sm flex items-center gap-2 cursor-not-allowed transition";
+      }
+    }
+
+    // ==========================================
+    // LEAFLET MAP LOGIC (GOFOOD PINPOINT SYSTEM)
+    // ==========================================
+    let tempSelectedLocation = { ...customerLocation };
+
+    function openMapModal() {
+      document.getElementById('map-modal').classList.remove('hidden');
+      tempSelectedLocation = { ...customerLocation };
+      document.getElementById('modal-address-note').value = customerLocation.note;
+      
+      // Tunggu modal tampil sebelum inisialisasi / invalidateSize map
+      setTimeout(() => {
+        initLeafletMap();
+      }, 150);
+    }
+
+    function closeMapModal() {
+      document.getElementById('map-modal').classList.add('hidden');
+    }
+
+    function initLeafletMap() {
+      const outlet = OUTLETS[currentOutletKey];
+
+      if (!map) {
+        // Buat map
+        map = L.map('leaflet-map', { zoomControl: false }).setView([tempSelectedLocation.lat, tempSelectedLocation.lng], 14);
+        
+        // Tile OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // Icon Custom Outlet (Toko Dimsum)
+        const outletIcon = L.divIcon({
+          className: 'custom-outlet-icon',
+          html: `<div style="background:#0f172a; color:#f59e0b; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-center; font-size:18px; border:2px solid #fff; box-shadow:0 4px 6px -1px rgba(0,0,0,0.3);">🥟</div>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17]
+        });
+
+        // Icon Custom Customer (Pin Merah Draggable ala GoFood)
+        const customerIcon = L.divIcon({
+          className: 'custom-customer-icon',
+          html: `
+            <div style="position:relative; width:40px; height:40px; display:flex; align-items:center; justify-content:center;">
+              <div class="pin-pulse" style="position:absolute; width:28px; height:28px; background:rgba(225,29,72,0.4); border-radius:9999px;"></div>
+              <div style="background:#e11d48; color:#fff; width:32px; height:32px; border-radius:9999px; display:flex; align-items:center; justify-content:center; font-size:14px; border:2px solid #fff; box-shadow:0 8px 15px -3px rgba(225,29,72,0.5); z-index:2;">
+                <i class="fa-solid fa-location-dot"></i>
+              </div>
+            </div>`,
+          iconSize: [40, 40],
+          iconAnchor: [20, 20]
+        });
+
+        // Add Outlet Marker
+        outletMarker = L.marker([outlet.lat, outlet.lng], { icon: outletIcon }).addTo(map)
+          .bindPopup(`<b>${outlet.name}</b><br>${outlet.address}`);
+
+        // Add Draggable Customer Marker
+        customerMarker = L.marker([tempSelectedLocation.lat, tempSelectedLocation.lng], { 
+          icon: customerIcon,
+          draggable: true 
+        }).addTo(map);
+
+        // Event saat Pin digeser (Dragend)
+        customerMarker.on('dragend', function (e) {
+          const pos = e.target.getLatLng();
+          onPinPositionChanged(pos.lat, pos.lng);
+        });
+
+        // Event saat peta diklik
+        map.on('click', function (e) {
+          customerMarker.setLatLng(e.latlng);
+          onPinPositionChanged(e.latlng.lat, e.latlng.lng);
+        });
+
+      } else {
+        map.invalidateSize();
+        updateMapMarkers();
+      }
+
+      onPinPositionChanged(tempSelectedLocation.lat, tempSelectedLocation.lng, false);
+    }
+
+    function updateMapMarkers() {
+      const outlet = OUTLETS[currentOutletKey];
+      if (outletMarker) {
+        outletMarker.setLatLng([outlet.lat, outlet.lng]);
+        outletMarker.setPopupContent(`<b>${outlet.name}</b><br>${outlet.address}`);
+      }
+      if (customerMarker) {
+        customerMarker.setLatLng([tempSelectedLocation.lat, tempSelectedLocation.lng]);
+      }
+      drawRouteLine();
+    }
+
+    function drawRouteLine() {
+      const outlet = OUTLETS[currentOutletKey];
+      if (routeLine) {
+        map.removeLayer(routeLine);
+      }
+      // Buat garis putus-putus penghubung
+      routeLine = L.polyline([
+        [outlet.lat, outlet.lng],
+        [tempSelectedLocation.lat, tempSelectedLocation.lng]
+      ], {
+        color: '#e11d48',
+        weight: 3,
+        dashArray: '6, 8',
+        opacity: 0.7
+      }).addTo(map);
+    }
+
+    // KETIKA POSISI PIN BERUBAH
+    function onPinPositionChanged(lat, lng, fetchGeocode = true) {
+      tempSelectedLocation.lat = lat;
+      tempSelectedLocation.lng = lng;
+
+      // Hitung jarak & ongkir di modal
+      const outlet = OUTLETS[currentOutletKey];
+      const dist = calculateHaversineDistance(outlet.lat, outlet.lng, lat, lng);
+      const distRounded = parseFloat(dist.toFixed(1));
+      const fee = Math.round((9000 + (distRounded * 2000)) / 100) * 100;
+
+      document.getElementById('modal-distance-text').innerText = `${distRounded} KM`;
+      document.getElementById('modal-fee-text').innerText = `Rp ${fee.toLocaleString('id-ID')}`;
+
+      drawRouteLine();
+
+      const addressLabel = document.getElementById('modal-detected-address');
+      
+      if (fetchGeocode) {
+        addressLabel.innerHTML = `<span class="text-slate-400 font-normal"><i class="fa-solid fa-spinner fa-spin"></i> Mendeteksi nama jalan...</span>`;
+        // Reverse Geocoding via Nominatim API gratis
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.display_name) {
+              const parts = data.display_name.split(',');
+              const title = parts.slice(0, 2).join(',').trim();
+              const detail = parts.slice(2, 5).join(',').trim();
+              
+              tempSelectedLocation.title = title || "Titik Peta Terpilih";
+              tempSelectedLocation.detail = detail || data.display_name;
+              addressLabel.innerText = `${tempSelectedLocation.title} (${tempSelectedLocation.detail})`;
+            }
+          })
+          .catch(() => {
+            addressLabel.innerText = `Koordinat: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            tempSelectedLocation.title = "Titik Koordinat Terpilih";
+            tempSelectedLocation.detail = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+          });
+      } else {
+        addressLabel.innerText = `${tempSelectedLocation.title} - ${tempSelectedLocation.detail}`;
+      }
+    }
+
+    // SEARCH AUTOCOMPLETE (NOMINATIM SEARCH API GRATIS)
+    function handleAddressSearch(query) {
+      const clearBtn = document.getElementById('search-clear-btn');
+      const dropdown = document.getElementById('search-results-dropdown');
+
+      if (!query || query.length < 3) {
+        dropdown.classList.add('hidden');
+        clearBtn.classList.add('hidden');
+        return;
+      }
+
+      clearBtn.classList.remove('hidden');
+      clearTimeout(searchTimeout);
+
+      searchTimeout = setTimeout(() => {
+        // Query dibatasi ke wilayah Indonesia & Banten
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' Banten')}&limit=5&countrycodes=id`;
+        
+        fetch(url)
+          .then(res => res.json())
+          .then(results => {
+            if (results && results.length > 0) {
+              dropdown.innerHTML = results.map(item => `
+                <div onclick="selectSearchResult(${item.lat}, ${item.lon}, '${escapeHtml(item.display_name)}')" class="p-2.5 hover:bg-slate-50 cursor-pointer text-xs flex items-start gap-2 transition">
+                  <i class="fa-solid fa-location-dot text-rose-500 mt-0.5 shrink-0"></i>
+                  <span class="text-slate-700 leading-snug">${item.display_name}</span>
+                </div>
+              `).join('');
+              dropdown.classList.remove('hidden');
+            } else {
+              dropdown.innerHTML = `<div class="p-3 text-xs text-slate-400 text-center">Tempat tidak ditemukan. Coba ketik nama jalan utama.</div>`;
+              dropdown.classList.remove('hidden');
+            }
+          })
+          .catch(() => {
+            dropdown.classList.add('hidden');
+          });
+      }, 400); // 400ms debounce
+    }
+
+    function selectSearchResult(lat, lon, displayName) {
+      document.getElementById('search-results-dropdown').classList.add('hidden');
+      document.getElementById('map-search-input').value = displayName.split(',')[0];
+      
+      const parts = displayName.split(',');
+      tempSelectedLocation.title = parts.slice(0, 2).join(',').trim();
+      tempSelectedLocation.detail = parts.slice(2, 5).join(',').trim();
+
+      map.flyTo([lat, lon], 16);
+      customerMarker.setLatLng([lat, lon]);
+      onPinPositionChanged(lat, lon, false);
+    }
+
+    function clearSearch() {
+      document.getElementById('map-search-input').value = '';
+      document.getElementById('search-clear-btn').classList.add('hidden');
+      document.getElementById('search-results-dropdown').classList.add('hidden');
+    }
+
+    // GPS GEOLOCATION BROWSER
+    function getCurrentGPSLocation() {
+      if (!navigator.geolocation) {
+        alert("Browser Anda tidak mendukung deteksi GPS.");
+        return;
+      }
+      const addressLabel = document.getElementById('modal-detected-address');
+      addressLabel.innerHTML = `<span class="text-rose-600 font-bold"><i class="fa-solid fa-crosshairs fa-spin"></i> Mendeteksi GPS perangkat Anda...</span>`;
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          map.flyTo([lat, lng], 16);
+          customerMarker.setLatLng([lat, lng]);
+          onPinPositionChanged(lat, lng, true);
+        },
+        (err) => {
+          alert("Izin lokasi GPS ditolak atau tidak terdeteksi. Silakan ketik nama jalan di kotak pencarian atau geser pin manual.");
+          addressLabel.innerText = `${tempSelectedLocation.title} - ${tempSelectedLocation.detail}`;
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+
+    // KONFIRMASI ALAMAT DARI MODAL
+    function confirmSelectedAddress() {
+      const noteInput = document.getElementById('modal-address-note').value;
+      customerLocation = {
+        ...tempSelectedLocation,
+        note: noteInput || "Tidak ada catatan khusus"
+      };
+
+      updateDeliveryCalculation();
+      closeMapModal();
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+
+    // ==========================================
+    // CHECKOUT & SIMULASI ORDER
+    // ==========================================
+    function openCheckoutModal() {
+      const { subtotal, activeShipping, grandTotal } = getTotals();
+      const summaryContainer = document.getElementById('modal-items-summary');
+      
+      let html = '';
+      for (const [id, qty] of Object.entries(cart)) {
+        const item = MENUS.find(m => m.id === parseInt(id));
+        if (item) {
+          html += `
+            <div class="flex justify-between">
+              <span>${qty}x ${item.name}</span>
+              <span class="font-medium">Rp ${(item.price * qty).toLocaleString('id-ID')}</span>
+            </div>
+          `;
+        }
+      }
+
+      if (fulfillmentMethod === 'delivery') {
+        html += `
+          <div class="flex justify-between text-amber-700 font-bold border-t border-slate-100 pt-1">
+            <span>Ongkir Delivery (${calculatedDistanceKm} KM):</span>
+            <span>Rp ${activeShipping.toLocaleString('id-ID')}</span>
+          </div>
+        `;
+      } else {
+        html += `
+          <div class="flex justify-between text-emerald-700 font-bold border-t border-slate-100 pt-1">
+            <span>Metode: Ambil di Tempat:</span>
+            <span>Rp 0</span>
+          </div>
+        `;
+      }
+
+      summaryContainer.innerHTML = html;
+      document.getElementById('modal-total-payment').innerText = `Rp ${grandTotal.toLocaleString('id-ID')}`;
+      
+      // Reset status error validasi
+      const nameError = document.getElementById('cust-name-error');
+      const phoneError = document.getElementById('cust-phone-error');
+      const custNameInput = document.getElementById('cust-name');
+      const custPhoneInput = document.getElementById('cust-phone');
+      if (nameError) nameError.classList.add('hidden');
+      if (phoneError) phoneError.classList.add('hidden');
+      if (custNameInput) custNameInput.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
+      if (custPhoneInput) custPhoneInput.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
+
+      document.getElementById('checkout-modal').classList.remove('hidden');
+    }
+
+    function closeCheckoutModal() {
+      document.getElementById('checkout-modal').classList.add('hidden');
+    }
+
+    function simulateSuccessfulPayment() {
+      const custNameInput = document.getElementById('cust-name');
+      const custPhoneInput = document.getElementById('cust-phone');
+      const nameError = document.getElementById('cust-name-error');
+      const phoneError = document.getElementById('cust-phone-error');
+
+      const custName = custNameInput ? custNameInput.value.trim() : '';
+      const custPhone = custPhoneInput ? custPhoneInput.value.trim() : '';
+
+      let hasError = false;
+
+      // 1. Validasi Nama Wajib Diisi
+      if (!custName) {
+        if (nameError) nameError.classList.remove('hidden');
+        if (custNameInput) custNameInput.classList.add('border-rose-500', 'ring-1', 'ring-rose-500');
+        hasError = true;
+      } else {
+        if (nameError) nameError.classList.add('hidden');
+        if (custNameInput) custNameInput.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
+      }
+
+      // 2. Validasi Nomor WhatsApp Wajib Diisi & Minimal 9 Digit
+      const phoneDigits = custPhone.replace(/\D/g, '');
+      if (!custPhone || phoneDigits.length < 9) {
+        if (phoneError) phoneError.classList.remove('hidden');
+        if (custPhoneInput) custPhoneInput.classList.add('border-rose-500', 'ring-1', 'ring-rose-500');
+        hasError = true;
+      } else {
+        if (phoneError) phoneError.classList.add('hidden');
+        if (custPhoneInput) custPhoneInput.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
+      }
+
+      if (hasError) {
+        // Fokuskan ke kolom yang kosong
+        if (!custName && custNameInput) {
+          custNameInput.focus();
+        } else if (custPhoneInput) {
+          custPhoneInput.focus();
+        }
+        return;
+      }
+
+      closeCheckoutModal();
+
+      const { grandTotal } = getTotals();
+      const orderId = '#DS-' + Math.floor(1000 + Math.random() * 9000);
+      const outlet = OUTLETS[currentOutletKey];
+      
+      let itemsText = [];
+      for (const [id, qty] of Object.entries(cart)) {
+        const item = MENUS.find(m => m.id === parseInt(id));
+        if (item) itemsText.push(`${qty}x ${item.name}`);
+      }
+
+      const googleMapsLink = `https://www.google.com/maps?q=${customerLocation.lat},${customerLocation.lng}`;
+
+      const deliveryDetailsText = fulfillmentMethod === 'delivery'
+        ? `${customerLocation.title} (${customerLocation.detail})\n📍 Catatan: ${customerLocation.note}\n🗺️ Link Navigasi Peta Kurir: ${googleMapsLink}`
+        : `Jadwal: ${document.getElementById('pickup-date').value} jam ${document.getElementById('pickup-time').value}`;
+
+      const newOrder = {
+        id: orderId,
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        custName,
+        custPhone,
+        outlet: outlet.name,
+        method: fulfillmentMethod === 'delivery' ? `Delivery (${calculatedDistanceKm} KM)` : 'Ambil di Tempat',
+        address: deliveryDetailsText,
+        mapsLink: googleMapsLink,
+        items: itemsText,
+        total: grandTotal,
+        status: 'PAID'
+      };
+
+      ordersList.unshift(newOrder);
+      updateKitchenView();
+
+      // WHATSAPP TEXT BUILDER (TERMASUK GOOGLE MAPS LINK PINPOINT!)
+      document.getElementById('success-order-id').innerText = orderId;
+      const waMsg = encodeURIComponent(
+        `Halo Kasir ${outlet.name},\n\nSaya sudah bayar pesanan dimsum via QRIS:\n` +
+        `🆔 ID Pesanan: ${orderId}\n` +
+        `👤 Nama: ${custName} (${custPhone})\n` +
+        `📦 Metode: ${newOrder.method}\n` +
+        `📍 Lokasi: ${deliveryDetailsText}\n\n` +
+        `🍽️ Rincian Pesanan:\n- ${itemsText.join('\n- ')}\n\n` +
+        `💰 Total Lunas: Rp ${grandTotal.toLocaleString('id-ID')}\n\n` +
+        `Mohon segera diproses ya kak, terima kasih!`
+      );
+      
+      document.getElementById('btn-wa-send').href = `https://wa.me/6285138774214?text=${waMsg}`;
+      document.getElementById('success-modal').classList.remove('hidden');
+
+      cart = {};
+      renderMenu();
+    }
+
+    function closeSuccessModalAndSwitchToKitchen() {
+      document.getElementById('success-modal').classList.add('hidden');
+      switchView('kitchen');
+    }
+
+    // KITCHEN VIEW
+    function updateKitchenView() {
+      const container = document.getElementById('kitchen-orders-list');
+      const badge = document.getElementById('kitchen-badge');
+
+      if (ordersList.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-200 border-dashed">
+            <i class="fa-solid fa-receipt text-3xl mb-2 text-slate-300"></i>
+            <p class="text-xs font-semibold">Belum ada pesanan masuk.</p>
+          </div>
+        `;
+        badge.classList.add('hidden');
+        return;
+      }
+
+      badge.innerText = ordersList.length;
+      badge.classList.remove('hidden');
+
+      container.innerHTML = ordersList.map((order, idx) => `
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+            <div>
+              <span class="font-extrabold text-sm text-slate-900">${order.id}</span>
+              <span class="text-[11px] text-slate-400 ml-2">${order.time} WIB</span>
+            </div>
+            <span class="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+              LUNAS (QRIS)
+            </span>
+          </div>
+
+          <div class="text-xs space-y-1.5">
+            <div class="text-slate-700"><strong>Pelanggan:</strong> ${order.custName} (${order.custPhone})</div>
+            <div class="text-slate-700"><strong>Outlet:</strong> ${order.outlet}</div>
+            <div class="text-amber-900 bg-amber-50 p-2.5 rounded-xl font-medium space-y-1">
+              <div><strong>${order.method}:</strong></div>
+              <div class="whitespace-pre-line text-[11px] text-slate-700">${order.address}</div>
+            </div>
+            <div class="pt-1">
+              <strong>Menu Dipesan:</strong>
+              <ul class="list-disc list-inside text-slate-600 mt-0.5">
+                ${order.items.map(it => `<li>${it}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+            <div class="text-xs font-extrabold text-slate-900">Total: Rp ${order.total.toLocaleString('id-ID')}</div>
+            <div class="flex gap-2">
+              <button onclick="updateOrderStatus(${idx}, 'Dimasak')" class="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800">
+                Mulai Masak
+              </button>
+              <button onclick="updateOrderStatus(${idx}, 'Siap Di-pickup')" class="text-xs bg-amber-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-amber-400">
+                Panggil Driver
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function updateOrderStatus(idx, status) {
+      alert(`Status pesanan ${ordersList[idx].id} diperbarui: "${status}"!`);
+    }
+
+    function clearOrders() {
+      ordersList = [];
+      updateKitchenView();
+    }
+
+    // SWITCH VIEW
+    function switchView(view) {
+      const custView = document.getElementById('customer-view');
+      const kitView = document.getElementById('kitchen-view');
+      const cartBar = document.getElementById('cart-bar');
+      const btnCust = document.getElementById('nav-btn-customer');
+      const btnKit = document.getElementById('nav-btn-kitchen');
+
+      if (view === 'customer') {
+        custView.classList.remove('hidden');
+        kitView.classList.add('hidden');
+        cartBar.classList.remove('hidden');
+        btnCust.className = "px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 shadow transition flex items-center gap-1.5";
+        btnKit.className = "px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition flex items-center gap-1.5";
+      } else {
+        custView.classList.add('hidden');
+        kitView.classList.remove('hidden');
+        cartBar.classList.add('hidden');
+        btnKit.className = "px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 shadow transition flex items-center gap-1.5";
+        btnCust.className = "px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition flex items-center gap-1.5";
+      }
+    }
+  </script>
+</body>
+</html>
